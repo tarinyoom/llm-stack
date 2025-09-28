@@ -21,7 +21,6 @@ services:
       timeout: 5s
       retries: 30
 
-  # ---- One-shot model presence check ----
   check-models:
     image: docker.io/ollama/ollama:latest
     container_name: check-models
@@ -29,20 +28,37 @@ services:
       ollama:
         condition: service_healthy
     environment:
+      # IMPORTANT: no scheme here — use host:port
+      - OLLAMA_HOST=ollama:11434
       - DEFAULT_CHAT_MODEL=llama3.1:8b
       - DEFAULT_EMBED_MODEL=nomic-embed-text
+      - PULL_IF_MISSING=1
     entrypoint: ["/bin/sh","-lc"]
     command: >
       'set -e;
-       for m in "$$DEFAULT_CHAT_MODEL" "$$DEFAULT_EMBED_MODEL"; do
-         if ollama list | grep -q "$$m"; then
-           echo "✅ Model $$m already present";
+       echo "Using OLLAMA_HOST=$$OLLAMA_HOST";
+       echo "Server tags (sanity check):";
+       ollama list || true;
+       MODELS="";
+       [ -n "$$DEFAULT_CHAT_MODEL" ] && MODELS="$$MODELS $$DEFAULT_CHAT_MODEL";
+       [ -n "$$DEFAULT_EMBED_MODEL" ] && MODELS="$$MODELS $$DEFAULT_EMBED_MODEL";
+       for m in $$MODELS; do
+         echo "Checking $$m ...";
+         if ollama show "$$m" >/dev/null 2>&1; then
+           echo "✅ $$m present on server";
          else
-           echo "⚠️ Model $$m NOT present (pull manually if needed)";
+           echo "⚠️ $$m missing on server";
+           if [ "$$PULL_IF_MISSING" = "1" ]; then
+             echo "→ Pulling $$m via server @ $$OLLAMA_HOST ...";
+             ollama pull "$$m";
+           fi
          fi
        done;
+       echo "Final server models:";
+       ollama list || true;
        echo "Model check complete."'
     restart: "no"
+
 
   # ---------------- Web UI ----------------
   openwebui:
