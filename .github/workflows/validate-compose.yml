@@ -1,0 +1,70 @@
+name: validate-compose
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Docker versions
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Start stack
+        run: |
+          docker compose pull
+          docker compose up -d
+          docker compose ps
+
+      - name: Wait for Web UI (port 3000)
+        run: |
+          timeout 180 bash -c '
+            until curl -fsS --compressed http://127.0.0.1:3000/ >/dev/null; do
+              echo "Waiting for Web UI on :3000 ..."
+              sleep 3
+            done
+          '
+
+      - name: Verify Web UI with headers
+        run: |
+          curl -fsSI http://127.0.0.1:3000
+
+      - name: Wait for ollama health (if defined)
+        run: |
+          for i in {1..60}; do
+            status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}unknown{{end}}' ollama || true)
+            if [ "$status" = "healthy" ] || [ "$status" = "unknown" ]; then
+              echo "ollama health: $status"
+              break
+            fi
+            echo "ollama health: $status (waiting...)"
+            sleep 3
+          done
+
+      - name: Verify Ollama has non-empty model list
+        run: |
+          echo "Current models (for diagnostics):"
+          docker exec ollama ollama list || true
+          # Count non-header lines; fail if zero
+          COUNT=$(docker exec ollama sh -lc 'ollama list | awk "NR>1" | wc -l')
+          echo "Model count: $COUNT"
+          test "$COUNT" -gt 0
+
+      - name: Dump container logs (always)
+        if: always()
+        run: |
+          docker compose logs --no-color --timestamps || true
+
+      - name: Teardown
+        if: always()
+        run: |
+          docker compose down -v
+
