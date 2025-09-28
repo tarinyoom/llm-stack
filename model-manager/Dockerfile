@@ -1,7 +1,16 @@
-FROM python:3.12-alpine
-RUN adduser -D -H -s /sbin/nologin app && mkdir -p /app && chown -R app:app /app
-WORKDIR /app
-COPY load.py /app/load.py
-USER app
-ENTRYPOINT ["python", "/app/load.py"]
+FROM docker.io/golang:1.22-alpine AS build
+WORKDIR /src
+COPY go.mod ./
+RUN go mod download
+COPY . .
+ENV CGO_ENABLED=0
+RUN go build -trimpath -ldflags="-s -w" -o /out/load  load.go
+RUN go build -trimpath -ldflags="-s -w" -o /out/probe probe.go
+
+FROM gcr.io/distroless/static:nonroot
+WORKDIR /
+COPY --from=build /out/load  /load
+COPY --from=build /out/probe /probe
+USER nonroot:nonroot
+ENTRYPOINT ["/load"]
 

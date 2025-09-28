@@ -1,46 +1,47 @@
-name: llm-stack
 services:
   ollama:
     image: docker.io/ollama/ollama:latest
-    container_name: ollama
     restart: unless-stopped
     ports:
       - "11434:11434"
     environment:
       - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_MODELS=/root/.ollama
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
 
   model-manager:
     build:
       context: ./model-manager
     depends_on:
       ollama:
-        condition: service_started
+        condition: service_healthy
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
-      - REQUIRED_MODELS=llama3.2 qwen2.5:7b
-      - STARTUP_TIMEOUT=90s
-      - REQUEST_TIMEOUT=45s
-      - LOOP_INTERVAL=0
+      - REQUIRED_MODELS=llama3.1:8b,qwen2.5:7b
+      - REQUEST_TIMEOUT=15s
+      - STARTUP_TIMEOUT=5m
+    healthcheck:
+      test: ["CMD", "/probe"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   openwebui:
     image: ghcr.io/open-webui/open-webui:latest
-    container_name: openwebui
-    restart: unless-stopped
     depends_on:
-      ollama:
-        condition: service_started
+      model-manager:
+        condition: service_healthy
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
     ports:
-      - "3000:8080"                           # Web UI at http://localhost:3000
-    volumes:
-      - openwebui-data:/app/backend/data
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080 >/dev/null"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
+      - "3000:8080"
 
 volumes:
-  openwebui-data:
+  ollama-models:
 
