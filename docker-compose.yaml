@@ -1,4 +1,4 @@
-name: local-llm-rag
+name: llm-stack
 services:
   ollama:
     image: docker.io/ollama/ollama:latest
