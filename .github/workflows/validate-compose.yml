@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  e2e:
+  validate:
     runs-on: ubuntu-latest
 
     steps:
