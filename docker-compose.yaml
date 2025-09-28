@@ -42,6 +42,5 @@ services:
       retries: 30
 
 volumes:
-  ollama-models:
   openwebui-data:
 
