@@ -1,5 +1,3 @@
-version: "3.9"
-
 name: local-llm-rag
 services:
   # ---------------- LLM runtime (Ollama) ----------------
