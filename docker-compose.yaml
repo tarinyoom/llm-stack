@@ -1,73 +1,34 @@
 name: local-llm-rag
 services:
-  # ---------------- LLM runtime (Ollama) ----------------
   ollama:
     image: docker.io/ollama/ollama:latest
     container_name: ollama
     restart: unless-stopped
     ports:
-      - "11434:11434"                        # Ollama API
+      - "11434:11434"
     environment:
       - OLLAMA_HOST=0.0.0.0:11434
-      - OLLAMA_MODELS=/models
-      # Optional: force CPU-only
-      # - OLLAMA_NUM_GPU=0
-    volumes:
-      - ollama-models:/models
-    healthcheck:
-      # API-only healthcheck
-      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
 
-  check-models:
-    image: docker.io/ollama/ollama:latest
-    container_name: check-models
+  model-manager:
+    build:
+      context: ./model-manager
     depends_on:
       ollama:
-        condition: service_healthy
+        condition: service_started
     environment:
-      # IMPORTANT: no scheme here — use host:port
-      - OLLAMA_HOST=ollama:11434
-      - DEFAULT_CHAT_MODEL=llama3.1:8b
-      - DEFAULT_EMBED_MODEL=nomic-embed-text
-      - PULL_IF_MISSING=1
-    entrypoint: ["/bin/sh","-lc"]
-    command: >
-      'set -e;
-       echo "Using OLLAMA_HOST=$$OLLAMA_HOST";
-       echo "Server tags (sanity check):";
-       ollama list || true;
-       MODELS="";
-       [ -n "$$DEFAULT_CHAT_MODEL" ] && MODELS="$$MODELS $$DEFAULT_CHAT_MODEL";
-       [ -n "$$DEFAULT_EMBED_MODEL" ] && MODELS="$$MODELS $$DEFAULT_EMBED_MODEL";
-       for m in $$MODELS; do
-         echo "Checking $$m ...";
-         if ollama show "$$m" >/dev/null 2>&1; then
-           echo "✅ $$m present on server";
-         else
-           echo "⚠️ $$m missing on server";
-           if [ "$$PULL_IF_MISSING" = "1" ]; then
-             echo "→ Pulling $$m via server @ $$OLLAMA_HOST ...";
-             ollama pull "$$m";
-           fi
-         fi
-       done;
-       echo "Final server models:";
-       ollama list || true;
-       echo "Model check complete."'
-    restart: "no"
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - REQUIRED_MODELS=llama3.2 qwen2.5:7b
+      - STARTUP_TIMEOUT=90s
+      - REQUEST_TIMEOUT=45s
+      - LOOP_INTERVAL=0
 
-
-  # ---------------- Web UI ----------------
   openwebui:
     image: ghcr.io/open-webui/open-webui:latest
     container_name: openwebui
     restart: unless-stopped
     depends_on:
       ollama:
-        condition: service_healthy
+        condition: service_started
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
     ports:
@@ -80,24 +41,7 @@ services:
       timeout: 5s
       retries: 30
 
-  # ---------------- Vector DB (Qdrant) ----------------
-  qdrant:
-    image: docker.io/qdrant/qdrant:latest
-    container_name: qdrant
-    restart: unless-stopped
-    ports:
-      - "6333:6333"                           # REST
-      - "6334:6334"                           # gRPC
-    volumes:
-      - qdrant-data:/qdrant/storage
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6333/readyz >/dev/null"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-
 volumes:
   ollama-models:
   openwebui-data:
-  qdrant-data:
 
