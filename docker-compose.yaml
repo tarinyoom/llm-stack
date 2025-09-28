@@ -18,6 +18,7 @@ services:
   model-manager:
     build:
       context: ./model-manager
+    restart: unless-stopped    
     depends_on:
       ollama:
         condition: service_healthy
@@ -34,6 +35,7 @@ services:
 
   openwebui:
     image: ghcr.io/open-webui/open-webui:latest
+    restart: unless-stopped
     depends_on:
       model-manager:
         condition: service_healthy
