@@ -10,37 +10,38 @@ services:
     environment:
       - OLLAMA_HOST=0.0.0.0:11434
       - OLLAMA_MODELS=/models
+      # Optional: force CPU-only
+      # - OLLAMA_NUM_GPU=0
     volumes:
       - ollama-models:/models
-    gpus: all                                 # requires nvidia-container-toolkit
     healthcheck:
-      # Checks BOTH: 1) Ollama API is up  2) GPU visible via nvidia-smi
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:11434/api/tags >/dev/null && command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L"]
+      # API-only healthcheck
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
       interval: 10s
       timeout: 5s
       retries: 30
 
-  # ---- One-shot seeding: auto-pull your default models on first boot ----
-  seed-models:
-    image: docker.io/curlimages/curl:8.10.1
-    container_name: seed-models
+  # ---- One-shot model presence check ----
+  check-models:
+    image: docker.io/ollama/ollama:latest
+    container_name: check-models
     depends_on:
       ollama:
         condition: service_healthy
     environment:
-      # Change these if you want different defaults
       - DEFAULT_CHAT_MODEL=llama3.1:8b
       - DEFAULT_EMBED_MODEL=nomic-embed-text
     entrypoint: ["/bin/sh","-lc"]
     command: >
       'set -e;
        for m in "$$DEFAULT_CHAT_MODEL" "$$DEFAULT_EMBED_MODEL"; do
-         if [ -n "$$m" ]; then
-           echo "Pulling $$m ..."
-           curl -fsS -X POST http://ollama:11434/api/pull -d "{\"name\":\"$$m\"}";
+         if ollama list | grep -q "$$m"; then
+           echo "✅ Model $$m already present";
+         else
+           echo "⚠️ Model $$m NOT present (pull manually if needed)";
          fi
        done;
-       echo "Model seeding complete."'
+       echo "Model check complete."'
     restart: "no"
 
   # ---------------- Web UI ----------------
@@ -58,7 +59,7 @@ services:
     volumes:
       - openwebui-data:/app/backend/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080 >/dev/null"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080 >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -74,7 +75,7 @@ services:
     volumes:
       - qdrant-data:/qdrant/storage
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:6333/readyz >/dev/null"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6333/readyz >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 30
